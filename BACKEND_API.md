@@ -1,12 +1,18 @@
 # BACKEND_API.md — WatchApps Backend API (Laravel)
 
-Версия: 1.0  
+Версия: 1.1  
 Base URL (prod, пример): `https://api.watchapps.ru`  
 Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://localhost:8000`
 
 Все API находятся под префиксом `/api`, ниже указаны пути **без** `/api` (как они описаны в `routes/api.php`).
 
-Аутентификация — через Laravel Sanctum (Bearer Token в заголовке `Authorization`).
+Аутентификация — через Laravel Sanctum (Bearer Token в заголовке `Authorization`).  
+Контроль доступа — через поле `role` в таблице `users` + middleware `role:...`.
+
+Роли:
+- `developer` — разработчик (имеет доступ к Dev Console)
+- `user` — покупатель (будет использоваться для клиента/приложения)
+- `admin` — администратор платформы
 
 ---
 
@@ -16,7 +22,8 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 
 **POST** `/auth/register`  
 
-Регистрация нового пользователя‑разработчика.
+Регистрация нового пользователя. По умолчанию — разработчик (`role = developer`).  
+В будущем можно будет использовать это же API для регистрации покупателей (`role = user`).
 
 #### Request (JSON)
 
@@ -25,19 +32,23 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
   "name": "Max Chester",
   "email": "user@example.com",
   "password": "secret123",
-  "password_confirmation": "secret123"
+  "password_confirmation": "secret123",
+  "role": "developer"
 }
 ```
+
+- `role` — опционально, одно из `developer`, `user`, `admin`  
+  Если не передан → по умолчанию `developer`.
 
 #### Response 201
 
 ```json
 {
-  "success": true,
   "user": {
     "id": 1,
     "name": "Max Chester",
-    "email": "user@example.com"
+    "email": "user@example.com",
+    "role": "developer"
   },
   "token": "SANCTUM_TOKEN_HERE"
 }
@@ -64,11 +75,11 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 
 ```json
 {
-  "success": true,
   "user": {
     "id": 1,
     "name": "Max Chester",
-    "email": "user@example.com"
+    "email": "user@example.com",
+    "role": "developer"
   },
   "token": "SANCTUM_TOKEN_HERE"
 }
@@ -87,7 +98,8 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 {
   "id": 1,
   "name": "Max Chester",
-  "email": "user@example.com"
+  "email": "user@example.com",
+  "role": "developer"
 }
 ```
 
@@ -102,7 +114,7 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 
 ```json
 {
-  "success": true
+  "message": "Logged out"
 }
 ```
 
@@ -111,6 +123,9 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 ## 2. Upload API
 
 Используется Dev Console и другими частями системы для загрузки файлов (иконки, баннеры, скриншоты, APK, видео превью и т.п.).
+
+Все маршруты upload доступны **любому авторизованному пользователю** (`auth:sanctum`), независимо от роли.  
+(При необходимости позже можно ограничить их только разработчиками.)
 
 ### 2.1 Загрузка файла
 
@@ -167,14 +182,20 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 
 ---
 
-## 3. Dev Console — Watchfaces Management
+## 3. Dev Console — Watchfaces Management (ROLE: developer)
 
-Все маршруты начинаются с префикса `/dev` и доступны только авторизованным пользователям (`auth:sanctum`).  
-Это внутренняя панель разработчика WatchApps.
+Все маршруты Dev Console начинаются с префикса `/dev` и доступны только пользователям, у которых:  
+
+- есть Sanctum-токен (`auth:sanctum`)
+- `role = developer` (через middleware `role:developer`)
+
+Это внутренняя панель разработчика WatchApps, аналог Google Play Console.
 
 ### 3.1 Список watchfaces текущего разработчика
 
 **GET** `/dev/watchfaces`
+
+Возвращает **только те товары, где `developer_id = current_user.id`**.
 
 #### Response 200
 
@@ -232,7 +253,7 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 ```
 
 - `categories` — массив `id` категорий из таблицы `categories` (необязателен)
-- если `is_free = true`, `price` может быть `0`, но не обязательно (зависит от бизнес‑логики)
+- если `is_free = true`, `price` может быть `0`, но не обязательно (зависит от бизнес-логики)
 
 #### Response 201
 
@@ -259,6 +280,10 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
   }
 }
 ```
+
+Ошибки:
+- `403 Forbidden` — если вдруг по логике сервис решит запретить действие
+- `422` — ошибки валидации
 
 ---
 
@@ -294,7 +319,6 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 ```
 
 Коды ошибок:
-
 - `403 Forbidden` — если watchface не принадлежит текущему разработчику
 - `404 Not Found` — если записи нет
 
@@ -356,8 +380,7 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 - сам watchface
 - все связи с категориями
 - все записи в `watchface_files`
-- соответствующие записи в `uploads`
-- и физические файлы через `Storage::delete()`
+- при необходимости — соответствующие записи в `uploads` и физические файлы
 
 #### Response 200
 
@@ -393,17 +416,11 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 
 ```json
 {
-  "success": true,
-  "watchface": {
-    "id": 1,
-    "files": [
-      { "id": 11, "type": "icon", "upload_id": 50, "sort_order": 0 },
-      { "id": 12, "type": "banner", "upload_id": 51, "sort_order": 0 },
-      { "id": 13, "type": "screenshot", "upload_id": 52, "sort_order": 1 }
-    ]
-  }
+  "success": true
 }
 ```
+
+(при необходимости можно возвращать обновлённый watchface)
 
 ---
 
@@ -414,8 +431,8 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 Удаляет:
 
 - запись `watchface_files`
-- связанную запись `uploads`
-- физический файл `Storage::delete($upload->path)`
+- при необходимости — связанную запись `uploads`
+- физический файл (если реализовано в сервисе)
 
 #### Response 200
 
@@ -444,7 +461,7 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 - `upload_id` — новый файл в `uploads`
 - `type` — опционально, можно сменить тип при замене
 
-Старый upload‑файл будет удалён из файловой системы и таблицы `uploads`.
+Старый upload-файл может быть удалён из файловой системы и таблицы `uploads` (зависит от реализации сервиса).
 
 #### Response 200
 
@@ -505,9 +522,10 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 
 ## 4. PUBLIC CATALOG API
 
-Эти маршруты **публичные**, не требуют авторизации.
+Эти маршруты **публичные**, не требуют авторизации.  
+Используются сайтом и мобильными приложениями.
 
-### 4.1 Топ‑товары
+### 4.1 Топ-товары
 
 **GET** `/catalog/top`
 
@@ -545,7 +563,7 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 
 - `status = published`
 - `discount_price IS NOT NULL`
-- `discount_end_at IS NULL OR discount_end_at >= NOW()` (можно реализовать в будущем)
+- `discount_end_at IS NULL OR discount_end_at >= NOW()` (логика в будущем/сервисе)
 
 ---
 
@@ -592,11 +610,11 @@ Base URL (dev): `https://dev-api.watchapps.ru` или локально: `http://
 
 - `200 OK` — успешный запрос
 - `201 Created` — ресурс создан
-- `400 Bad Request` — ошибка валидации
+- `400 Bad Request` — ошибка валидации (иногда 422)
 - `401 Unauthorized` — нет или неверный токен
-- `403 Forbidden` — нет прав (чужой watchface)
+- `403 Forbidden` — нет прав (чужой watchface или wrong role)
 - `404 Not Found` — ресурс не найден
 - `500 Internal Server Error` — внутренняя ошибка сервера
 
-Все ошибки валидации стандартные для Laravel (`422 Unprocessable Entity` с полем `errors`).
+Ошибки валидации — стандартный формат Laravel (`422 Unprocessable Entity` с полем `errors`).
 

@@ -1,10 +1,11 @@
 # DATABASE_SCHEMA.md — WatchApps Backend Schema
 
-Версия: 1.0
+Версия: 1.1
 
 Документ описывает ключевые сущности базы данных, связанные с:
 
 - пользователями и аутентификацией
+- ролями (`role`)
 - загрузками файлов
 - товарами (watchfaces / apps)
 - категориями
@@ -16,24 +17,34 @@
 
 ## 1. Таблица `users`
 
-**Назначение:** учетные записи пользователей/разработчиков.
+**Назначение:** учетные записи пользователей/разработчиков/админов.
 
-Примерная структура (Laravel default, упрощённо):
+Примерная структура (Laravel default + поле `role`):
 
-| Поле        | Тип              | Описание                      |
-|------------|------------------|-------------------------------|
-| id         | BIGINT UNSIGNED  | PK                            |
-| name       | VARCHAR(255)     | Имя                           |
-| email      | VARCHAR(255)     | Email (уникальный)            |
-| password   | VARCHAR(255)     | Хэш пароля                    |
-| created_at | TIMESTAMP        |                               |
-| updated_at | TIMESTAMP        |                               |
+| Поле        | Тип              | Описание                                    |
+|------------|------------------|---------------------------------------------|
+| id         | BIGINT UNSIGNED  | PK                                          |
+| name       | VARCHAR(255)     | Имя                                         |
+| email      | VARCHAR(255)     | Email (уникальный)                          |
+| role       | VARCHAR(50)      | Роль: `developer`, `user`, `admin`         |
+| password   | VARCHAR(255)     | Хэш пароля                                  |
+| created_at | TIMESTAMP        |                                             |
+| updated_at | TIMESTAMP        |                                             |
+
+### Роли
+
+- `developer` — разработчик циферблатов, имеет доступ к Dev Console (`/api/dev/...`)
+- `user` — обычный покупатель (для фронтенда и мобильных приложений)
+- `admin` — администратор платформы (доступ к административным разделам, планируется позже)
+
+Связи:
+- `User` может быть разработчиком многих `Watchface` (`hasMany` через `developer_id`)
 
 ---
 
 ## 2. Таблица `personal_access_tokens`
 
-**Назначение:** токены Sanctum для API‑доступа.
+**Назначение:** токены Sanctum для API-доступа.
 
 (стандартная структура Laravel Sanctum)
 
@@ -49,7 +60,7 @@
 | user_id   | BIGINT UNSIGNED  | FK → users.id (кто загрузил файл)            |
 | filename  | VARCHAR(255)     | Оригинальное имя файла                        |
 | path      | VARCHAR(255)     | Путь в файловой системе (для Storage)        |
-| mime_type | VARCHAR(100)     | MIME‑тип (`image/png`, `application/vnd...`) |
+| mime_type | VARCHAR(100)     | MIME-тип (`image/png`, `application/vnd...`) |
 | size      | BIGINT           | Размер в байтах                               |
 | created_at| TIMESTAMP        |                                               |
 | updated_at| TIMESTAMP        |                                               |
@@ -82,10 +93,10 @@
 
 Индексы:
 - индекс по `developer_id`
-- уникальный индекс по `slug` (рекомендуется)
+- рекомендуется уникальный индекс по `slug`
 
 Связи:
-- `Watchface` belongsTo `User` (developer)
+- `Watchface` belongsTo `User` (developer, через `developer_id`)
 - `Watchface` hasMany `WatchfaceFile`
 - `Watchface` belongsToMany `Category` через `watchface_category`
 
@@ -111,7 +122,7 @@
 
 ## 6. Таблица `watchface_category` (pivot)
 
-**Назначение:** связь многие‑ко‑многим между `watchfaces` и `categories`.
+**Назначение:** связь многие-ко-многим между `watchfaces` и `categories`.
 
 | Поле         | Тип              | Описание                    |
 |-------------|------------------|-----------------------------|
@@ -146,48 +157,54 @@
 
 ## 8. Прочие таблицы (стандартный Laravel / служебные)
 
-Эти таблицы используются фреймворком и инфраструктурой, и в рамках бизнес‑логики Watchfaces практически не трогаются напрямую:
+Эти таблицы используются фреймворком и инфраструктурой, и в рамках бизнес-логики Watchfaces практически не трогаются напрямую:
 
 ### 8.1 `migrations`
-
 - Хранит список выполненных миграций.
 
 ### 8.2 `jobs`, `failed_jobs`, `job_batches`
-
 - Очереди задач.
 
 ### 8.3 `cache`, `cache_locks`
-
 - Кэш Laravel.
 
 ### 8.4 `sessions`
-
 - Сессии, если используется драйвер `database`.
 
 ### 8.5 `password_reset_tokens`
-
 - Токены сброса пароля.
 
 ### 8.6 `user_devices` (кастомная таблица)
-
-Вероятно используется для связи пользователей с устройствами (телефоны/часы). Подробная схема описывается в отдельной спецификации модуля устройств.
+- Используется для связи пользователей с устройствами (телефоны/часы). Подробная схема описывается в отдельной спецификации модуля устройств.
 
 ### 8.7 `developers`, `developer_payouts`, `payments`, `purchases`
-
-Это таблицы, связанные с:
-
-- учёткой разработчиков как отдельной сущности (если отделено от users)
-- выплатами разработчикам
-- платежами пользователей
-- покупками конкретных товаров
-
-Их точная схема зависит от платежной и финансовой логики и может быть описана в отдельном документе `BILLING_SCHEMA.md`.
+- Таблицы, связанные с биллингом, выплатами разработчикам, покупками товаров и платёжной логикой маркетплейса.
+- Их точная схема описывается в отдельном документе `BILLING_SCHEMA.md` (планируется).
 
 ---
 
 ## 9. Связи на уровне моделей (Eloquent)
 
-### 9.1 Watchface
+### 9.1 User
+
+```php
+class User extends Model
+{
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'role',
+    ];
+
+    public function watchfaces()
+    {
+        return $this->hasMany(Watchface::class, 'developer_id');
+    }
+}
+```
+
+### 9.2 Watchface
 
 ```php
 class Watchface extends Model
@@ -209,7 +226,7 @@ class Watchface extends Model
 }
 ```
 
-### 9.2 Category
+### 9.3 Category
 
 ```php
 class Category extends Model
@@ -221,7 +238,7 @@ class Category extends Model
 }
 ```
 
-### 9.3 WatchfaceFile
+### 9.4 WatchfaceFile
 
 ```php
 class WatchfaceFile extends Model
@@ -238,7 +255,7 @@ class WatchfaceFile extends Model
 }
 ```
 
-### 9.4 Upload
+### 9.5 Upload
 
 ```php
 class Upload extends Model
@@ -256,8 +273,9 @@ class Upload extends Model
 
 Данный документ покрывает:
 
-- основные бизнес‑сущности WatchApps backend
+- основные бизнес-сущности WatchApps backend
+- добавление ролей пользователей (`role`) и связь с Dev Console
 - связи между пользователями, файлами и товарами
 - поддержку категорий, скидок и файлов разного типа
 
-При изменении структуры таблиц (новые поля, типы файлов, статусы и т.п.) этот файл должен обновляться и коммититься вместе с миграциями.
+При изменении структуры таблиц (новые поля, типы файлов, статусы и т.п.) этот файл должен обновляться и коммититься вместе с миграциями и кодом.
