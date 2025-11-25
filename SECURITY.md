@@ -1,10 +1,4 @@
-# WatchApps — Безопасность
+## Security
 
-- HTTPS обязательно
-- Пароли: bcrypt
-- Токены: Sanctum
-- Проверка хеша APK
-- Ограничение прямых ссылок
-- Ограничение скачивания
-- Rate limiting API
-- CSRF для web
+- Login uses HttpOnly cookies
+- CSRF protection enabled

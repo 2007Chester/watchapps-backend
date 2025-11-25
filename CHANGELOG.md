@@ -1,7 +1,3 @@
-# WatchApps — История изменений
-
-## 2025-11-20
-- создан backend репозиторий
-- добавлена авторизация
-- добавлен upload APK
-- настроен HTTPS
+## 2025-11-25
+- Added authentication system
+- Updated middleware and CORS

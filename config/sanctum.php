@@ -16,12 +16,13 @@ return [
     */
 
     'stateful' => [
-    'watchapps.ru',
-    'www.watchapps.ru',
     'localhost',
     '127.0.0.1',
-    '127.0.0.1:8000',
+    'watchapps.ru',
+    'www.watchapps.ru',
+    'dev.watchapps.ru',
 ],
+
 
 
     /*

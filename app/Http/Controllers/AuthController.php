@@ -9,8 +9,7 @@ use App\Models\User;
 class AuthController extends Controller
 {
     /**
-     * Регистрация пользователя (по умолчанию — developer).
-     * Позже можно будет добавить регистрацию покупателей.
+     * Регистрация пользователя
      */
     public function register(Request $request)
     {
@@ -21,7 +20,7 @@ class AuthController extends Controller
             'role'     => 'nullable|in:developer,user,admin'
         ]);
 
-        $role = $validated['role'] ?? 'developer'; // ← по умолчанию разработчик
+        $role = $validated['role'] ?? 'user';
 
         $user = User::create([
             'name'     => $validated['name'] ?? '',
@@ -30,10 +29,13 @@ class AuthController extends Controller
             'role'     => $role,
         ]);
 
-        return response()->json([
-            'user'  => $user,
-            'token' => $user->createToken('app')->plainTextToken
-        ]);
+        // Создаём токен
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        // Ставим httpOnly cookie
+        return response()
+            ->json(['user' => $user])
+            ->cookie('wa_token', $token, 60 * 24 * 7, '/', null, true, true, false, 'Strict');
     }
 
     /**
@@ -52,10 +54,11 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
-        return response()->json([
-            'user'  => $user,
-            'token' => $user->createToken('app')->plainTextToken
-        ]);
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()
+            ->json(['user' => $user])
+            ->cookie('wa_token', $token, 60 * 24 * 7, '/', null, true, true, false, 'Strict');
     }
 
     /**
@@ -73,6 +76,8 @@ class AuthController extends Controller
     {
         $request->user()->tokens()->delete();
 
-        return response()->json(['message' => 'Logged out']);
+        return response()
+            ->json(['message' => 'Logged out'])
+            ->cookie('wa_token', '', -1);
     }
 }
